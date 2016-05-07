@@ -80,14 +80,32 @@ fetch_next:
 static int __init vdisk_init(void)
 {
 	int ret = 0;
+	struct elevator_queue *old_e;
 	printk("vdisk_init\n");
 
+	// 创建请求队列
 	vdisk_queue = blk_init_queue(vdisk_blkdev_do_request, NULL);
 	if (!vdisk_queue)
 	{
 		ret = -ENOMEM;
 		goto out;
 	}
+
+	// 设置请求队列调度器
+	/* 新版本代码中, 如果request_queue->elevator不是NULL,就不会替换 */
+	old_e = vdisk_queue->elevator;
+	vdisk_queue->elevator = NULL;
+	elevator_exit(old_e);
+	if (elevator_init(vdisk_queue, "noop"))
+	{
+		printk("vdisk: switch to noop elevator failure");
+	}
+	else
+	{
+		elevator_init(vdisk_queue, NULL);
+	}
+
+	// 分配磁盘
 	vdisk_disk = alloc_disk(1);
 	if (!vdisk_disk)
 	{
@@ -102,6 +120,7 @@ static int __init vdisk_init(void)
 	vdisk_disk->queue = vdisk_queue;
 	set_capacity(vdisk_disk, VDISK_BLKDEV_BYTES >> 9);
 
+	// 添加磁盘
 	add_disk(vdisk_disk);
 out:
 	return ret;
