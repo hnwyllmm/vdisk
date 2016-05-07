@@ -14,96 +14,55 @@ static struct block_device_operations vdisk_block_device_ops = {
 	.owner = THIS_MODULE,
 };
 
-static void vdisk_blkdev_do_request(struct request_queue *rq)
+static void vdisk_blkdev_make_request(struct request_queue *rq, struct bio *bio)
 {
-	#if 1
-	struct req_iterator ri;
+	int i;
 	struct bio_vec *bvec;
-	char *buffer, *disk_mem;
-	struct request *req = blk_fetch_request(rq);
+	char *disk_mem;
 
-	while (req)
+	const int start = bio->bi_sector << 9;
+	const int size  = bio->bi_size;
+	if (start + size > VDISK_BLKDEV_BYTES)
 	{
-		const int start = blk_rq_pos(req) << 9;
-		const int size  = blk_rq_cur_bytes(req);
-		const int end_offset = start + size;
-		if (end_offset > VDISK_BLKDEV_BYTES)
-		{
-			printk("vdisk: bad request: start %d, count %d\n", start, size);
-			__blk_end_request_all(req, -EIO);
-			goto fetch_next;
-		}
-
-		printk("vdisk: request start %d, count %d\n", start, size);
-		disk_mem = vdisk_data + start;
-		switch(rq_data_dir(req))
-		{
-		case READ:
-			/*
-			memcpy(req->buffer, (char *)vdisk_data + start, size);
-			*/
-			rq_for_each_segment(bvec, req, ri)
-			{
-				buffer = kmap(bvec->bv_page) + bvec->bv_offset;
-				memcpy(buffer, disk_mem, bvec->bv_len);
-				kunmap(bvec->bv_page);
-				disk_mem += bvec->bv_len;
-			}
-			__blk_end_request_all(req, 0);
-			break;
-		case WRITE:
-			/*
-			memcpy((char *)vdisk_data + start, req->buffer, size);
-			*/
-			rq_for_each_segment(bvec, req, ri)
-			{
-				buffer = kmap(bvec->bv_page) + bvec->bv_offset;
-				memcpy(disk_mem, buffer, bvec->bv_len);
-				kunmap(bvec->bv_page);
-				disk_mem += bvec->bv_len;
-			}
-			__blk_end_request_all(req, 0);
-			break;
-		default:
-			__blk_end_request_all(req, -EINVAL);
-			break;
-		}
-
-fetch_next:
-		req = blk_fetch_request(rq);
+		printk("vdisk: bad request: start %d, count %d\n", start, size);
+		bio_endio(bio, -EIO);
+		return ;
 	}
-	#endif
 
-	printk("vdisk: vdisk_blkdev_do_request exit\n");
+	disk_mem = vdisk_data + start;
+	bio_for_each_segment(bvec, bio, i)
+	{
+		void *iovec_mem;
+		iovec_mem = kmap(bvec->bv_page) + bvec->bv_offset;
+		if (WRITE == bio_rw(bio))
+		{
+			memcpy(disk_mem, iovec_mem, bvec->bv_len);
+		}
+		else
+		{
+			memcpy(iovec_mem, disk_mem, bvec->bv_len);
+		}
+		kunmap(bvec->bv_page);
+		disk_mem += bvec->bv_len;
+	}
+	bio_endio(bio, 0);
+	return ;
 }
 
 static int __init vdisk_init(void)
 {
 	int ret = 0;
-	struct elevator_queue *old_e;
 	printk("vdisk_init\n");
 
 	// 创建请求队列
-	vdisk_queue = blk_init_queue(vdisk_blkdev_do_request, NULL);
+	vdisk_queue = blk_alloc_queue(GFP_KERNEL);
 	if (!vdisk_queue)
 	{
 		ret = -ENOMEM;
 		goto out;
 	}
 
-	// 设置请求队列调度器
-	/* 新版本代码中, 如果request_queue->elevator不是NULL,就不会替换 */
-	old_e = vdisk_queue->elevator;
-	vdisk_queue->elevator = NULL;
-	elevator_exit(old_e);
-	if (elevator_init(vdisk_queue, "noop"))
-	{
-		printk("vdisk: switch to noop elevator failure");
-	}
-	else
-	{
-		elevator_init(vdisk_queue, NULL);
-	}
+	blk_queue_make_request(vdisk_queue, vdisk_blkdev_make_request);
 
 	// 分配磁盘
 	vdisk_disk = alloc_disk(1);
