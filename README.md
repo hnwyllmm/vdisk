@@ -82,6 +82,13 @@ Calling ioctl() to re-read partition table.
 Syncing disks.
 ```
 
+> NOTE: 3.13中磁盘分区已经不是按照磁道来划分，书中介绍的知识已经过时。按照fdisk的介绍，分区按照扇区划分
+root@ubuntu:~/vdisk# ll /dev/vdisk*
+brw-rw---- 1 root disk 72, 0 May  7 19:51 /dev/vdisk
+brw-rw---- 1 root disk 72, 1 May  7 19:51 /dev/vdisk1
+brw-rw---- 1 root disk 72, 2 May  7 19:51 /dev/vdisk2
+brw-rw---- 1 root disk 72, 3 May  7 19:51 /dev/vdisk3
+
 ## 查看磁盘分区
 ```
 root@ubuntu:/dev# ls vdisk*
