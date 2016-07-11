@@ -1,6 +1,7 @@
 #include <linux/module.h>
 #include <linux/blkdev.h>
 #include <linux/genhd.h>
+#include <linux/hdreg.h>
 
 #define VDISK_MAJOR 72 // COMPAQ_SMART2_MAJOR
 #define VDISK_NAME	"vdisk"
@@ -12,10 +13,38 @@ static struct gendisk *vdisk_disk;
 static struct request_queue *vdisk_queue;
 static char vdisk_data[VDISK_BLKDEV_BYTES];
 
+static int vdisk_blkdev_getgeo(struct block_device *bdev, struct hd_geometry *geo);
+
 static struct block_device_operations vdisk_block_device_ops = {
 	.owner = THIS_MODULE,
+	.getgeo = vdisk_blkdev_getgeo,
 };
 
+static int vdisk_blkdev_getgeo(struct block_device *bdev, struct hd_geometry *geo)
+{
+	if (VDISK_BLKDEV_BYTES < 16 * 1024 * 1024)
+	{
+		geo->heads = 1;
+		geo->sectors = 1;
+	}
+	else if (VDISK_BLKDEV_BYTES < 512 * 1024 * 1024)
+	{
+		geo->heads = 1;
+		geo->sectors = 32;
+	}
+	else if (VDISK_BLKDEV_BYTES < 16ULL * 1024 * 1024 * 1024)
+	{
+		geo->heads = 32;
+		geo->sectors = 32;
+	}
+	else
+	{
+		geo->heads = 255;
+		geo->sectors = 63;
+	}
+	geo->cylinders = (VDISK_BLKDEV_BYTES >> 9) / geo->heads / geo->sectors;
+	return 0;
+}
 static void vdisk_blkdev_make_request(struct request_queue *rq, struct bio *bio)
 {
 	int i;
