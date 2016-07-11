@@ -12,3 +12,27 @@ echo hello > /mnt/vdisk/test     # 测试
 umount /dev/vdisk                # 卸载
 rmmod vdisk                      # 删除模块
 ```
+
+VDISK磁盘信息
+```
+root@ubuntu:/dev# fdisk /dev/vdisk 
+Device contains neither a valid DOS partition table, nor Sun, SGI or OSF disklabel
+Building a new DOS disklabel with disk identifier 0xa4e67d26.
+Changes will remain in memory only, until you decide to write them.
+After that, of course, the previous content won't be recoverable.
+
+Warning: invalid flag 0x0000 of partition table 4 will be corrected by w(rite)
+
+Command (m for help): p
+
+Disk vdisk: 16 MB, 16777216 bytes
+1 heads, 32 sectors/track, 1024 cylinders, total 32768 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disk identifier: 0xa4e67d26
+
+Device Boot      Start         End      Blocks   Id  System
+
+Command (m for help): 
+```
