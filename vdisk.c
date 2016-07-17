@@ -102,7 +102,7 @@ static void vdisk_freemem(void)
 	{
 		p = radix_tree_lookup(&vdisk_data, i);
 		radix_tree_delete(&vdisk_data, i);
-		free_page((unsigned long)p);
+		free_pages((unsigned long)p, VDISK_DATA_SEGORDER);
 	}
 }
 
