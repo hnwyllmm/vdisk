@@ -105,8 +105,9 @@ static void vdisk_freemem(void)
 		radix_tree_delete(&vdisk_data, i);
 		if (ppage)
 		{
-			p = page_address(ppage);
+			p = kmap(ppage);
 			memset(p, 0, VDISK_DATA_SEGSIZE);
+			kunmap(ppage);
 			__free_pages(ppage, VDISK_DATA_SEGORDER);
 		}
 	}
