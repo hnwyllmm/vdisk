@@ -20,6 +20,7 @@ module_param_named(size, param_disk_size, charp, S_IRUGO);
 static struct gendisk *vdisk_disk;
 static struct request_queue *vdisk_queue;
 static struct radix_tree_root vdisk_data = RADIX_TREE_INIT(GFP_KERNEL);
+static DEFINE_MUTEX(vdisk_data_lock);
 
 static int vdisk_blkdev_getgeo(struct block_device *bdev, struct hd_geometry *geo);
 
@@ -120,12 +121,14 @@ static int vdisk_blkdev_oneseg(int blk_index, int offset, char *buf, int blksize
 {
 	struct page *ppage;
 	char *disk_mem;
+	mutex_lock(&vdisk_data_lock);
 	ppage = radix_tree_lookup(&vdisk_data, blk_index);
 	if (!ppage)
 	{
 		if (WRITE != dir)
 		{
 			memset(buf, 0, blksize);
+			mutex_unlock(&vdisk_data_lock);
 			goto out;
 		}
 
@@ -133,6 +136,7 @@ static int vdisk_blkdev_oneseg(int blk_index, int offset, char *buf, int blksize
 		if (!ppage)
 		{
 			printk("vdisk: cannot alloc memory\n");
+			mutex_unlock(&vdisk_data_lock);
 			return -ENOMEM;
 		}
 
@@ -140,9 +144,11 @@ static int vdisk_blkdev_oneseg(int blk_index, int offset, char *buf, int blksize
 		{
 			printk("vdisk: insert radix tree failure\n");
 			__free_pages(ppage, VDISK_DATA_SEGORDER);
+			mutex_unlock(&vdisk_data_lock);
 			return -EIO;
 		}
 	}
+	mutex_unlock(&vdisk_data_lock);
 
 	disk_mem = kmap(ppage);
 	disk_mem += offset;
