@@ -19,7 +19,7 @@ module_param_named(size, param_disk_size, charp, S_IRUGO);
 
 static struct gendisk *vdisk_disk;
 static struct request_queue *vdisk_queue;
-static struct radix_tree_root vdisk_data;
+static struct radix_tree_root vdisk_data = RADIX_TREE_INIT(GFP_KERNEL);
 
 static int vdisk_blkdev_getgeo(struct block_device *bdev, struct hd_geometry *geo);
 
@@ -115,39 +115,6 @@ static void vdisk_freemem(void)
 	} while(count > 0);
 }
 
-static int vdisk_allocmem(void)
-{
-	int ret;
-	int i;
-	int pages;
-	struct page *ppage;
-
-	INIT_RADIX_TREE(&vdisk_data, GFP_KERNEL);
-	pages = (disk_size + VDISK_DATA_SEGSIZE - 1) >> VDISK_DATA_SEGSHIFT;
-	for (i = 0; i < pages; i++)
-	{
-		printk(KERN_INFO "vdisk: alloc page: %d\n", i);
-		ppage = alloc_pages(GFP_KERNEL | __GFP_HIGHMEM | __GFP_ZERO, VDISK_DATA_SEGORDER);
-		if (!ppage)
-		{
-			ret = -ENOMEM;
-			goto err_alloc;
-		}
-
-		ret = radix_tree_insert(&vdisk_data, i, ppage);
-		if (IS_ERR_VALUE(ret))
-			goto err_radix_tree_insert;
-	}
-	return 0;
-
-err_radix_tree_insert:
-	printk(KERN_INFO "vdisk: alloc page error: %d\n", i);
-	__free_pages(ppage, VDISK_DATA_SEGORDER);
-err_alloc:
-	vdisk_freemem();
-	return ret;
-
-}
 ///////////////////////////////////////////////////////////////////////////////
 static int vdisk_blkdev_oneseg(int blk_index, int offset, char *buf, int blksize, int dir)
 {
@@ -156,8 +123,25 @@ static int vdisk_blkdev_oneseg(int blk_index, int offset, char *buf, int blksize
 	ppage = radix_tree_lookup(&vdisk_data, blk_index);
 	if (!ppage)
 	{
-		printk("vdisk: cannot find memory: %d\n", blk_index);
-		return -1;
+		if (WRITE != dir)
+		{
+			memset(buf, 0, blksize);
+			goto out;
+		}
+
+		ppage = alloc_pages(GFP_KERNEL | __GFP_ZERO | __GFP_HIGHMEM, VDISK_DATA_SEGORDER);
+		if (!ppage)
+		{
+			printk("vdisk: cannot alloc memory\n");
+			return -ENOMEM;
+		}
+
+		if (0 != radix_tree_insert(&vdisk_data, blk_index, ppage))
+		{
+			printk("vdisk: insert radix tree failure\n");
+			__free_pages(ppage, VDISK_DATA_SEGORDER);
+			return -EIO;
+		}
 	}
 
 	disk_mem = kmap(ppage);
@@ -170,6 +154,8 @@ static int vdisk_blkdev_oneseg(int blk_index, int offset, char *buf, int blksize
 	{
 		memcpy(buf, disk_mem, blksize);
 	}
+
+out:
 	kunmap(ppage);
 	return 0;
 }
@@ -244,16 +230,12 @@ static int __init vdisk_init(void)
 	if ((ret = getparam()) != 0)
 		return ret;
 
-	ret = vdisk_allocmem();
-	if (IS_ERR_VALUE(ret))
-		goto out;
-
 	// 创建请求队列
 	vdisk_queue = blk_alloc_queue(GFP_KERNEL);
 	if (!vdisk_queue)
 	{
 		ret = -ENOMEM;
-		goto freemem;
+		goto out;
 	}
 
 	blk_queue_make_request(vdisk_queue, vdisk_blkdev_make_request);
@@ -281,8 +263,6 @@ out:
 clean_queue:
 	blk_cleanup_queue(vdisk_queue);
 
-freemem:
-	vdisk_freemem();
 	goto out;
 }
 
