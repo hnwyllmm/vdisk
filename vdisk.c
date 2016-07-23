@@ -124,7 +124,7 @@ static int vdisk_allocmem(void)
 	for (i = 0; i < pages; i++)
 	{
 		printk(KERN_INFO "vdisk: alloc page: %d\n", i);
-		ppage = alloc_pages(GFP_KERNEL, VDISK_DATA_SEGORDER);
+		ppage = alloc_pages(GFP_KERNEL | __GFP_HIGHMEM | __GFP_ZERO, VDISK_DATA_SEGORDER);
 		if (!ppage)
 		{
 			ret = -ENOMEM;
@@ -157,7 +157,7 @@ static int vdisk_blkdev_oneseg(int blk_index, int offset, char *buf, int blksize
 		return -1;
 	}
 
-	disk_mem = page_address(ppage);
+	disk_mem = kmap(ppage);
 	disk_mem += offset;
 	if (WRITE == dir)
 	{
@@ -167,6 +167,7 @@ static int vdisk_blkdev_oneseg(int blk_index, int offset, char *buf, int blksize
 	{
 		memcpy(buf, disk_mem, blksize);
 	}
+	kunmap(ppage);
 	return 0;
 }
 static int vdisk_blkdev_trans(int offset, char *buf, int blksize, int dir)
