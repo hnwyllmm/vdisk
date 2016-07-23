@@ -96,20 +96,23 @@ static int vdisk_blkdev_getgeo(struct block_device *bdev, struct hd_geometry *ge
 static void vdisk_freemem(void)
 {
 	int i;
-	struct page *ppage;
 	void *p;
-	int pages = (disk_size + VDISK_DATA_SEGSIZE - 1) >> VDISK_DATA_SEGSHIFT;
-	for (i = 0; i < pages; i++)
+	struct page *results[64];
+	int count, index = 0;
+	do
 	{
-		ppage = radix_tree_lookup(&vdisk_data, i);
-		radix_tree_delete(&vdisk_data, i);
-		if (ppage)
+		count = radix_tree_gang_lookup(&vdisk_data, (void **)results, index, 
+			sizeof(results)/sizeof(results[0]));
+		for (i = 0; i < count; i++)
 		{
-			p = page_address(ppage);
+			p = kmap(results[i]);
 			memset(p, 0, VDISK_DATA_SEGSIZE);
-			__free_pages(ppage, VDISK_DATA_SEGORDER);
+			kunmap(results[i]);
+			__free_pages(results[i], VDISK_DATA_SEGORDER);
+			radix_tree_delete(&vdisk_data, index + i);
 		}
-	}
+		index += count;
+	} while(count > 0);
 }
 
 static int vdisk_allocmem(void)
