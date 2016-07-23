@@ -248,7 +248,8 @@ static void __exit vdisk_exit(void)
 
 	if (vdisk_disk)
 	{
-		put_disk(vdisk_disk);
+		// 没有使用过get_disk增加引用计数，也就不再使用put_disk减少引用计数
+		// put_disk(vdisk_disk);
 		del_gendisk(vdisk_disk);
 	}
 
